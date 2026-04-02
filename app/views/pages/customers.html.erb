@@ -1,0 +1,295 @@
+<h1>Customer Manager</h1>
+<p>Rails + Vue (no build tools)</p>
+
+<div id="customers-app"></div>
+
+<script src="https://unpkg.com/vue@3/dist/vue.global.prod.js"></script>
+<script>
+  const { createApp, ref, onMounted } = Vue
+
+  createApp({
+    setup() {
+      const customers = ref([])
+      const loading = ref(false)
+      const error = ref("")
+      const success = ref("")
+
+      const form = ref({
+        first_name: "",
+        last_name: "",
+        email: "",
+        account_type: "basic"
+      })
+
+      const editingId = ref(null)
+      const editForm = ref({
+        first_name: "",
+        last_name: "",
+        email: "",
+        account_type: "basic"
+      })
+
+      const loadCustomers = async () => {
+        loading.value = true
+        error.value = ""
+
+        try {
+          const response = await fetch("/api/customers", {
+            headers: { "Accept": "application/json" }
+          })
+
+          if (!response.ok) {
+            throw new Error("Failed to load customers")
+          }
+
+          customers.value = await response.json()
+        } catch (err) {
+          error.value = err.message
+        } finally {
+          loading.value = false
+        }
+      }
+
+      const createCustomer = async () => {
+        error.value = ""
+        success.value = ""
+
+        try {
+          const response = await fetch("/api/customers", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              "Accept": "application/json"
+            },
+            body: JSON.stringify({
+              customer: form.value
+            })
+          })
+
+          const data = await response.json()
+
+          if (!response.ok) {
+            const details = data.details ? data.details.join(", ") : "Unknown error"
+            throw new Error(details)
+          }
+
+          success.value = "Customer created successfully."
+
+          form.value = {
+            first_name: "",
+            last_name: "",
+            email: "",
+            account_type: "basic"
+          }
+
+          await loadCustomers()
+        } catch (err) {
+          error.value = err.message
+        }
+      }
+
+      const startEdit = (customer) => {
+        error.value = ""
+        success.value = ""
+        editingId.value = customer.id
+        editForm.value = {
+          first_name: customer.first_name,
+          last_name: customer.last_name,
+          email: customer.email,
+          account_type: customer.account_type
+        }
+      }
+
+      const cancelEdit = () => {
+        editingId.value = null
+        editForm.value = {
+          first_name: "",
+          last_name: "",
+          email: "",
+          account_type: "basic"
+        }
+      }
+
+      const updateCustomer = async (id) => {
+        error.value = ""
+        success.value = ""
+
+        try {
+          const response = await fetch(`/api/customers/${id}`, {
+            method: "PATCH",
+            headers: {
+              "Content-Type": "application/json",
+              "Accept": "application/json"
+            },
+            body: JSON.stringify({
+              customer: editForm.value
+            })
+          })
+
+          const data = await response.json()
+
+          if (!response.ok) {
+            const details = data.details ? data.details.join(", ") : "Update failed"
+            throw new Error(details)
+          }
+
+          success.value = "Customer updated successfully."
+          cancelEdit()
+          await loadCustomers()
+        } catch (err) {
+          error.value = err.message
+        }
+      }
+
+      const deleteCustomer = async (id) => {
+        error.value = ""
+        success.value = ""
+
+        try {
+          const response = await fetch(`/api/customers/${id}`, {
+            method: "DELETE",
+            headers: {
+              "Accept": "application/json"
+            }
+          })
+
+          if (!response.ok) {
+            throw new Error("Delete failed")
+          }
+
+          success.value = "Customer deleted."
+          if (editingId.value === id) {
+            cancelEdit()
+          }
+          await loadCustomers()
+        } catch (err) {
+          error.value = err.message
+        }
+      }
+
+      onMounted(loadCustomers)
+
+      return {
+        customers,
+        loading,
+        error,
+        success,
+        form,
+        editingId,
+        editForm,
+        createCustomer,
+        startEdit,
+        cancelEdit,
+        updateCustomer,
+        deleteCustomer
+      }
+    },
+    template: `
+      <div style="max-width: 900px; font-family: Arial, sans-serif;">
+        <div v-if="error" style="color: red; margin-bottom: 1rem;">
+          {{ error }}
+        </div>
+
+        <div v-if="success" style="color: green; margin-bottom: 1rem;">
+          {{ success }}
+        </div>
+
+        <div style="border: 1px solid #ccc; padding: 1rem; margin-bottom: 2rem;">
+          <h2>Create Customer</h2>
+
+          <div style="margin-bottom: 0.75rem;">
+            <label>First Name</label><br>
+            <input v-model="form.first_name" type="text" style="width: 100%; padding: 0.5rem;">
+          </div>
+
+          <div style="margin-bottom: 0.75rem;">
+            <label>Last Name</label><br>
+            <input v-model="form.last_name" type="text" style="width: 100%; padding: 0.5rem;">
+          </div>
+
+          <div style="margin-bottom: 0.75rem;">
+            <label>Email</label><br>
+            <input v-model="form.email" type="email" style="width: 100%; padding: 0.5rem;">
+          </div>
+
+          <div style="margin-bottom: 0.75rem;">
+            <label>Account Type</label><br>
+            <select v-model="form.account_type" style="width: 100%; padding: 0.5rem;">
+              <option value="basic">basic</option>
+              <option value="premium">premium</option>
+            </select>
+          </div>
+
+          <button @click="createCustomer" style="padding: 0.6rem 1rem;">
+            Create Customer
+          </button>
+        </div>
+
+        <div>
+          <h2>Customers</h2>
+
+          <div v-if="loading">Loading...</div>
+
+          <div v-else-if="customers.length > 0">
+            <div
+              v-for="customer in customers"
+              :key="customer.id"
+              style="border: 1px solid #ddd; padding: 1rem; margin-bottom: 1rem;"
+            >
+              <div v-if="editingId !== customer.id">
+                <div><strong>{{ customer.full_name }}</strong></div>
+                <div>{{ customer.email }}</div>
+                <div>{{ customer.account_type }}</div>
+
+                <div style="margin-top: 0.75rem;">
+                  <button @click="startEdit(customer)" style="margin-right: 10px;">
+                    Edit
+                  </button>
+                  <button @click="deleteCustomer(customer.id)">
+                    Delete
+                  </button>
+                </div>
+              </div>
+
+              <div v-else>
+                <div style="margin-bottom: 0.75rem;">
+                  <label>First Name</label><br>
+                  <input v-model="editForm.first_name" type="text" style="width: 100%; padding: 0.5rem;">
+                </div>
+
+                <div style="margin-bottom: 0.75rem;">
+                  <label>Last Name</label><br>
+                  <input v-model="editForm.last_name" type="text" style="width: 100%; padding: 0.5rem;">
+                </div>
+
+                <div style="margin-bottom: 0.75rem;">
+                  <label>Email</label><br>
+                  <input v-model="editForm.email" type="email" style="width: 100%; padding: 0.5rem;">
+                </div>
+
+                <div style="margin-bottom: 0.75rem;">
+                  <label>Account Type</label><br>
+                  <select v-model="editForm.account_type" style="width: 100%; padding: 0.5rem;">
+                    <option value="basic">basic</option>
+                    <option value="premium">premium</option>
+                  </select>
+                </div>
+
+                <div style="margin-top: 0.75rem;">
+                  <button @click="updateCustomer(customer.id)" style="margin-right: 10px;">
+                    Save
+                  </button>
+                  <button @click="cancelEdit">
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div v-else>No customers found.</div>
+        </div>
+      </div>
+    `
+  }).mount("#customers-app")
+</script>
